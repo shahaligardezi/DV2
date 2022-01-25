@@ -1,0 +1,179 @@
+---
+title: "Data Visualization 2: HW2"
+author: "Shah Ali Gardezi"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+---
+
+```{r setup, include=FALSE}
+
+```
+
+```{r}
+# libraries
+
+library(data.table)
+library(ggplot2)
+library(gganimate)
+library(dplyr)
+
+df <- data.table(readRDS('flats.rds'))
+# colors to use "#006D77", "#66B7B0" ,"#EDF6F9"
+```
+
+# Task 1
+```{r}
+
+ggplot(df, aes(x = Area)) + 
+  geom_bar(fill = "#006D77", color = "white", stat = 'bin', binwidth = 5) +
+  theme_bw() + 
+  ggtitle("Distribution of the Area of flats (m2)")
+
+
+```
+
+# Task 2
+
+```{r}
+
+ggplot(df[!is.na(Condition), ], aes(x = Price, group = Condition, fill = Condition, )) + 
+  geom_density(alpha = 0.25) +
+  theme_bw() +
+  ggtitle("Price Distribution for flats in different conditions")
+```
+
+# Task 3
+
+```{r}
+ggplot(df[!is.na(Condition), ], aes(x = Area, y = Price)) + 
+  geom_point(alpha = 0.3) +
+  theme_bw() + 
+  ggtitle("How the condition of the flats effects price of area") + 
+  geom_smooth(aes(color = factor(Condition)), method = "lm", se = FALSE) + # se = false doesnt give CI
+  labs(color = "Condition")
+
+```
+
+# Task 4
+
+```{r}
+
+task4 <- df[,.(mean_price=mean(Price)),by = District]
+
+ggplot(task4)+
+  aes(x = factor(District), y = mean_price) +
+  geom_bar( size = 1.5, fill = "#006D77", stat = "identity") +
+  theme_bw()+
+  labs(y="Average Price", x= "District")
+
+```
+
+# Task 5
+```{r}
+
+ggplot(df) +
+  aes(x = factor(District), y = Price) +
+  geom_boxplot(color = "#006D77", fill = "#66B7B0", alpha= 0.5) +
+  labs(x = "District", y = "Price") +
+  theme_bw()
+
+```
+
+# Task 6
+
+```{r}
+
+ggplot(df, aes(x = factor(District), y = Price)) + 
+  geom_violin(color = "#006D77", fill = "#66B7B0" ) +
+  theme_bw() +
+  labs(x = "District")
+```
+
+# Task 7
+
+```{r}
+
+dist_name <- df[ ,.(num_of_flats = .N, mean_price = round(mean(Price)) ), by = District]
+
+gg1 <- ggplot(df, aes(x = Price)) +
+  geom_bar(fill = "#006D77", color = "white",stat = 'bin', binwidth = 30000) +
+  theme_bw()
+
+gg2 <- gg1 +  
+  transition_states(District) +
+  labs(title = paste("District {closest_state}"), 
+  subtitle = paste('Number of flats: {nrow(subset(df, District == closest_state))}
+Mean price: {dist_name[District == closest_state, round(mean_price)]} ft'))
+
+```
+
+# Bonus Excercises
+
+```{r include=TRUE, message=FALSE, warning=FALSE}
+library(ggmap)
+
+budapest_outline <- c(bottom = 47.349755, top = 47.613628, right = 19.338735, left = 18.924935)
+
+buda_map <- get_stamenmap(bbox = budapest_outline , maptype = 'toner-lite',color = c("color", "bw"))
+
+
+#Removing NAs
+df <-df[!is.na(Comfort_lev)]
+
+df <- df[Comfort_lev=="luxury",rating := 6]
+df <-df[Comfort_lev=="very high",rating := 5]
+df <-df[Comfort_lev=="high",rating := 4]
+df <-df[Comfort_lev=="average",rating := 3]
+df <-df[Comfort_lev=="low",rating := 2]
+df <-df[Comfort_lev=="very low",rating := 1]
+
+newdata <- df[,.(Average_price=mean(rating)),by= District]
+
+library(tidygeocoder)
+
+
+districts <- read.csv("https://raw.githubusercontent.com/shahaligardezi/DV2/main/Homeworks/HW2/district.csv")
+
+geocode <- geocode(districts,"address")
+saveRDS(geocode, 'geocodes.RDS')
+
+final_geocodes <- left_join(geocode,newdata)
+
+
+  ggmap(buda_map)+
+  geom_point(data=final_geocodes,aes(x=long,y=lat,size=Average_price), color= "orange") + theme(legend.position='none')
+
+
+```
+
+```{r include=TRUE, message=FALSE, warning=FALSE}
+
+
+
+sorted_df <- df[,.(Count=.N), by=.(District,Comfort_lev)]
+new_df <- left_join(geocode,sorted_df)
+
+new_df <- as.data.table(new_df)
+new_df <- new_df[,address:= NULL]
+
+
+library(scatterpie)
+spreaded_data <- new_df %>% tidyr::spread("Comfort_lev","Count")
+spreaded_data[is.na(spreaded_data)] <- 0
+
+ggmap(buda_map) +
+  geom_scatterpie(aes(x=long, y=lat, group=District, r = 0.01),
+                  data=spreaded_data,
+                  cols=c("very low", "low", "average", "high", "very high", "luxury"),
+                  color=NA,
+                  size = 0.4,
+                  alpha = 0.6,
+                  legend_name = 'Comfort') +
+  coord_equal() +
+  labs(title = "Distribution of comfort level by districts", color = "Comfort") +
+  theme_void() +
+  theme(legend.position="top") +
+  guides(fill = guide_legend(nrow = 1))
+
+```
